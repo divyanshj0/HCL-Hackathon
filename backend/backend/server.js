@@ -6,7 +6,7 @@ const dotenv = require('dotenv');
 // Load Environment Variables
 dotenv.config();
 const authRoutes = require('./routes/authRoutes');
-const providerRoutes = require('./routes/providerRoutes');
+const profileRoutes = require('./routes/patientRoute'); 
 
 const app = express();
 
@@ -14,22 +14,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Logging Middleware [cite: 60]
+// Logging Middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
   next();
 });
 
-// Database Connection [cite: 68]
+// Database Connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB Connected'))
   .catch(err => console.error('MongoDB Connection Error:', err));
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/provider', providerRoutes);
+// Mount all profile and dashboard routes under /api/
+app.use('/api', profileRoutes); 
 
-// Public Health Info Page (Static endpoint) [cite: 55]
+// Public Health Info Page (Static endpoint)
 app.get('/api/public-health', (req, res) => {
   res.json({
     message: "General Health Information",
