@@ -5,9 +5,7 @@ const dotenv = require('dotenv');
 
 // Load Environment Variables
 dotenv.config();
-
 const authRoutes = require('./routes/authRoutes');
-const patientRoutes = require('./routes/patientRoutes');
 const providerRoutes = require('./routes/providerRoutes');
 
 const app = express();
@@ -29,7 +27,6 @@ mongoose.connect(process.env.MONGO_URI)
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/patient', patientRoutes);
 app.use('/api/provider', providerRoutes);
 
 // Public Health Info Page (Static endpoint) [cite: 55]

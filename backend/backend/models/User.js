@@ -6,24 +6,26 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { 
     type: String, 
-    enum: ['patient', 'provider'], // Role-based access [cite: 27]
+    enum: ['patient', 'provider'], 
     default: 'patient' 
   },
-  privacyConsent: { type: Boolean, required: true }, // Consent checkbox 
+  phone: { type: String }, // Added for both registration forms
+  privacyConsent: { type: Boolean, default: true }, // Assuming implicit consent on signup
   
-  // Profile Information 
-  healthProfile: {
+  // --- Patient/Health Fields ---
+  healthProfile: { // Kept minimal for now
     allergies: [String],
     medications: [String],
     bloodType: String
   },
   
-  // Preventive Care Reminders [cite: 44]
-  reminders: [{
-    title: String,
-    date: Date,
-    completed: { type: Boolean, default: false }
-  }]
+  // --- Doctor-specific fields (optional for patient role) ---
+  specialization: { type: String },
+  hospital: { type: String },
+  licenseNumber: { type: String },
+  experience: { type: Number },
+  
+  // Removed explicit reminders/recommendations array to simplify core model in this phase
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);
