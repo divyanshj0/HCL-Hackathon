@@ -9,11 +9,11 @@ const userSchema = new mongoose.Schema({
     enum: ['patient', 'provider'], 
     default: 'patient' 
   },
-  phone: { type: String }, // Added for both registration forms
-  privacyConsent: { type: Boolean, default: true }, // Assuming implicit consent on signup
+  phone: { type: String },
+  privacyConsent: { type: Boolean, default: true },
   
   // --- Patient/Health Fields ---
-  healthProfile: { // Kept minimal for now
+  healthProfile: { 
     allergies: [String],
     medications: [String],
     bloodType: String
@@ -22,14 +22,18 @@ const userSchema = new mongoose.Schema({
   weight: { type: Number }, // in kg
   height: { type: Number }, // in cm
 
+  // NEW: Patient's assigned doctors
+  assignedDoctorIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+
   // --- Doctor-specific fields (optional for patient role) ---
   specialization: { type: String },
   hospital: { type: String },
   licenseNumber: { type: String },
-  experience: { type: Number }, // Added for DoctorProfile
+  experience: { type: Number },
 
-  // --- Dynamic Data Link for Patient Dashboard ---
-  // Embedded Recommendations/Reminders for simplicity
+  // NEW: Doctor's assigned patients (used for privacy enforcement)
+  assignedPatientIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  
   doctorRecommendations: [{
     doctorName: String,
     date: Date,

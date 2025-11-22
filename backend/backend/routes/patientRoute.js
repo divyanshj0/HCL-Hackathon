@@ -33,7 +33,7 @@ router.get('/profile/:role', protect, async (req, res) => {
     try {
         let user;
         if (role === 'patient') {
-            user = await User.findById(userId).select('name email phone age weight height');
+            user = await User.findById(userId).select('name email phone age weight height assignedDoctorIds');
         } else if (role === 'provider') {
             user = await User.findById(userId).select('name email phone specialization hospital licenseNumber experience');
         }
@@ -86,6 +86,196 @@ router.put('/profile/:role', protect, async (req, res) => {
 
 
 // =========================================================
+// DOCTOR LIST & ASSIGNMENT ENDPOINTS
+// =========================================================
+
+// @route   GET /api/doctors/list
+// @desc    Get list of all registered doctors (for patient booking)
+// @access  Private (protect)
+router.get('/doctors/list', protect, async (req, res) => {
+    try {
+        const doctors = await User.find({ role: 'provider' }).select('name specialization hospital experience');
+
+        // Check if the current user (patient) is already assigned to any of these doctors
+        const patient = await User.findById(req.user.id).select('assignedDoctorIds');
+        const assignedIds = (patient?.assignedDoctorIds || []).map(id => id.toString());
+
+        const doctorList = doctors.map(doc => ({
+            id: doc._id,
+            name: doc.name,
+            specialization: doc.specialization,
+            hospital: doc.hospital,
+            experience: doc.experience,
+            isAssigned: assignedIds.includes(doc._id.toString()) // Mark if already assigned
+        }));
+
+        res.json(doctorList);
+    } catch (error) {
+        console.error("Fetch Doctors List Error:", error);
+        res.status(500).json({ message: 'Server error fetching doctors list' });
+    }
+});
+
+
+// @route   POST /api/doctors/assign
+// @desc    Assign a doctor to the logged-in patient (and vice-versa)
+// @access  Private (protect)
+router.post('/doctors/assign', protect, async (req, res) => {
+    if (req.user.role !== 'patient') {
+        return res.status(403).json({ message: 'Only patients can book doctors.' });
+    }
+
+    const patientId = req.user.id;
+    const { doctorId } = req.body;
+
+    if (!doctorId) {
+        return res.status(400).json({ message: 'Doctor ID is required for assignment.' });
+    }
+
+    try {
+        // 1. Assign doctor to patient (Add doctorId to patient's list)
+        const updatedPatient = await User.findByIdAndUpdate(
+            patientId,
+            { $addToSet: { assignedDoctorIds: doctorId } }, // $addToSet prevents duplicates
+            { new: true }
+        );
+
+        // 2. Assign patient to doctor (Add patientId to doctor's list)
+        await User.findByIdAndUpdate(
+            doctorId,
+            { $addToSet: { assignedPatientIds: patientId } },
+            { new: true }
+        );
+
+        if (!updatedPatient) {
+            return res.status(404).json({ message: 'Patient not found' });
+        }
+
+        res.json({ message: 'Doctor successfully assigned!', doctorName: updatedPatient.name });
+
+    } catch (error) {
+        console.error("Doctor Assignment Error:", error);
+        res.status(500).json({ message: 'Server error during doctor assignment' });
+    }
+});
+
+// @route   POST /api/doctors/unassign
+// @desc    Unassign a doctor from the logged-in patient (and vice-versa)
+// @access  Private (protect)
+router.post('/doctors/unassign', protect, async (req, res) => {
+    if (req.user.role !== 'patient') {
+        return res.status(403).json({ message: 'Only patients can unassign doctors.' });
+    }
+
+    const patientId = req.user.id;
+    const { doctorId } = req.body;
+
+    if (!doctorId) {
+        return res.status(400).json({ message: 'Doctor ID is required for unassignment.' });
+    }
+
+    try {
+        // 1. Unassign doctor from patient (Pull doctorId from patient's list)
+        const updatedPatient = await User.findByIdAndUpdate(
+            patientId,
+            { $pull: { assignedDoctorIds: doctorId } },
+            { new: true }
+        );
+
+        // 2. Unassign patient from doctor (Pull patientId from doctor's list)
+        await User.findByIdAndUpdate(
+            doctorId,
+            { $pull: { assignedPatientIds: patientId } },
+            { new: true }
+        );
+
+        if (!updatedPatient) {
+            return res.status(404).json({ message: 'Patient not found' });
+        }
+
+        res.json({ message: 'Doctor successfully unassigned!' });
+
+    } catch (error) {
+        console.error("Doctor Unassignment Error:", error);
+        res.status(500).json({ message: 'Server error during doctor unassignment' });
+    }
+});
+
+
+// =========================================================
+// PATIENT GOAL & DATA INPUT ENDPOINTS
+// =========================================================
+
+// @route   POST /api/goals/add
+// @desc    Add daily health data (Water, Calories, Sleep)
+// @access  Private (protect)
+router.post('/goals/add', protect, async (req, res) => {
+    if (req.user.role !== 'patient') {
+        return res.status(403).json({ message: 'Only patients can log health data.' });
+    }
+
+    const userId = req.user.id;
+    const { type, value } = req.body; // type: 'water' | 'calories' | 'sleep'
+
+    if (!type || value === undefined) {
+        return res.status(400).json({ message: 'Type and value are required.' });
+    }
+
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Find and update today's log, or create a new one
+        const goal = await Goal.findOneAndUpdate(
+            { userId, type, date: { $gte: today } },
+            { value },
+            { new: true, upsert: true } // Creates if not found
+        );
+
+        res.status(200).json({ message: `${type} data logged successfully for today!`, goal });
+
+    } catch (error) {
+        console.error("Add Goal Error:", error);
+        res.status(500).json({ message: 'Server error logging health data' });
+    }
+});
+
+// @route   PUT /api/goals/set-target
+// @desc    Set/Update daily health data target
+// @access  Private (protect)
+router.put('/goals/set-target', protect, async (req, res) => {
+    if (req.user.role !== 'patient') {
+        return res.status(403).json({ message: 'Only patients can set goals.' });
+    }
+
+    const userId = req.user.id;
+    const { type, target } = req.body;
+
+    if (!type || target === undefined) {
+        return res.status(400).json({ message: 'Type and target are required.' });
+    }
+
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Find today's entry and update the target. Use upsert to create if it doesn't exist.
+        const goal = await Goal.findOneAndUpdate(
+            { userId, type, date: { $gte: today } },
+            { target },
+            { new: true, upsert: true }
+        );
+
+        res.status(200).json({ message: `${type} goal set to ${target}.`, goal });
+
+    } catch (error) {
+        console.error("Set Target Error:", error);
+        res.status(500).json({ message: 'Server error setting goal target' });
+    }
+});
+
+
+// =========================================================
 // PATIENT DASHBOARD ENDPOINT
 // =========================================================
 
@@ -93,6 +283,7 @@ router.put('/profile/:role', protect, async (req, res) => {
 // @desc    Get all dynamic data for patient dashboard
 // @access  Private (protect)
 router.get('/dashboard/patient', protect, async (req, res) => {
+    // ... (logic remains the same, included for completeness)
     if (req.user.role !== 'patient') {
         return res.status(403).json({ message: 'Access denied. Patient portal required.' });
     }
@@ -110,10 +301,12 @@ router.get('/dashboard/patient', protect, async (req, res) => {
         const todayStats = todayGoals.reduce((acc, goal) => {
             acc[goal.type] = { 
                 value: goal.value, 
+                // Use stored target or default
                 target: goal.target || (goal.type === 'water' ? 8 : (goal.type === 'calories' ? 2000 : 8))
             };
             return acc;
         }, {
+            // Default stats for the day if no log exists yet
             water: { value: 0, target: 8 },
             calories: { value: 0, target: 2000 },
             sleep: { value: 0, target: 8 }
@@ -180,37 +373,47 @@ router.get('/dashboard/patient', protect, async (req, res) => {
 
 
 // =========================================================
-// DOCTOR DASHBOARD ENDPOINT
+// DOCTOR DASHBOARD ENDPOINTS
 // =========================================================
 
 // @route   GET /api/dashboard/doctor
-// @desc    Get all dynamic data for doctor dashboard
+// @desc    Get dynamic data for doctor dashboard (filtered by assigned patients)
 // @access  Private (protect, providerOnly)
 router.get('/dashboard/doctor', protect, providerOnly, async (req, res) => {
-    try {
-        // 1. Fetch Stats
-        const totalPatients = await User.countDocuments({ role: 'patient' });
-        // NOTE: Appointments/Active Cases requires additional models/logic not present, using mock logic
-        // Total Appointments - Mock as half of total patients (e.g., historical)
-        const totalAppointments = Math.floor(totalPatients * 1.5);
-        // Today's Appointments - Mock as small percentage of total
-        const todayAppointments = Math.ceil(totalPatients * 0.05);
+    const doctorId = req.user.id;
 
-        // 2. Fetch Recent Patients
-        const recentPatients = await User.find({ role: 'patient' })
-            .select('name createdAt')
+    try {
+        // 1. Get the list of IDs of patients assigned to this doctor
+        const doctorProfile = await User.findById(doctorId).select('assignedPatientIds');
+        const assignedPatientIds = doctorProfile ? doctorProfile.assignedPatientIds : [];
+
+        // 2. Fetch Stats based *only* on assigned patients
+        const totalPatients = assignedPatientIds.length;
+        
+        // MOCK DATA for other stats, now based on the assigned count
+        const todayAppointments = Math.ceil(totalPatients * 0.1); 
+        const activeCases = Math.ceil(totalPatients * 0.15);
+        const totalConsultations = Math.floor(totalPatients * 2.5);
+
+        // 3. Fetch Recent Patients (only those assigned) - Include ID for detail link
+        const recentPatients = await User.find({ 
+            _id: { $in: assignedPatientIds }, 
+            role: 'patient' 
+        })
+            .select('name createdAt') 
             .sort({ createdAt: -1 })
-            .limit(3);
+            .limit(10); 
 
         const data = {
             totalPatients,
             todayAppointments,
-            activeCases: Math.ceil(totalPatients * 0.15), // Mock Active Cases
-            totalConsultations: totalAppointments, // Mock Consultations
+            activeCases,
+            totalConsultations,
             recentPatients: recentPatients.map(p => ({
+                id: p._id, // Include ID for frontend link
                 name: p.name,
-                lastVisit: p.createdAt.toISOString().split('T')[0], // Using creation date as mock 'last visit'
-                condition: "Follow-up" // Mock Condition
+                lastVisit: p.createdAt.toISOString().split('T')[0],
+                condition: "Assigned"
             }))
         };
 
@@ -218,6 +421,60 @@ router.get('/dashboard/doctor', protect, providerOnly, async (req, res) => {
     } catch (error) {
         console.error("Doctor Dashboard Error:", error);
         res.status(500).json({ message: 'Server error fetching dashboard data' });
+    }
+});
+
+
+// @route   GET /api/doctors/patient/:patientId
+// @desc    Get comprehensive health data for an assigned patient (FOR DOCTOR VIEW)
+// @access  Private (protect, providerOnly)
+router.get('/doctors/patient/:patientId', protect, providerOnly, async (req, res) => {
+    const { patientId } = req.params;
+    const doctorId = req.user.id;
+
+    try {
+        // 1. Check if the doctor is assigned to this patient (Privacy check)
+        const doctor = await User.findById(doctorId).select('assignedPatientIds');
+        if (!doctor || !doctor.assignedPatientIds.includes(patientId)) {
+            return res.status(403).json({ message: 'Access denied. Patient is not assigned to this doctor.' });
+        }
+
+        // 2. Fetch Patient Profile
+        const patient = await User.findById(patientId).select('name email phone age weight height doctorRecommendations');
+        if (!patient) {
+            return res.status(404).json({ message: 'Patient not found.' });
+        }
+
+        // 3. Fetch All Goal Data
+        const allGoals = await Goal.find({ userId: patientId }).sort({ date: 1 });
+
+        // Structure goals by type for easy consumption
+        const structuredGoals = allGoals.reduce((acc, goal) => {
+            if (!acc[goal.type]) acc[goal.type] = [];
+            acc[goal.type].push({
+                date: goal.date,
+                value: goal.value,
+                target: goal.target,
+            });
+            return acc;
+        }, {});
+        
+        res.json({
+            profile: {
+                name: patient.name,
+                email: patient.email,
+                phone: patient.phone,
+                age: patient.age,
+                weight: patient.weight,
+                height: patient.height,
+            },
+            goals: structuredGoals,
+            recommendations: patient.doctorRecommendations,
+        });
+
+    } catch (error) {
+        console.error("Doctor Patient Detail Error:", error);
+        res.status(500).json({ message: 'Server error fetching patient details' });
     }
 });
 
