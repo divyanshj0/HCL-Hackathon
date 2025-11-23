@@ -183,3 +183,15 @@ fetch(`${process.env.REACT_APP_API_URL}/api/user/profile`, {
 
 This screenshot shows the initial profile screen after a successful login.
 ![User Profile Screenshot](screenshots/WhatsApp%20Image%202025-11-22%20at%2012.41.59_6423c3c9.jpg)
+
+### 📊 Main Dashboard View
+
+This screenshot provides an overview of the application's primary features and data points.
+
+![Dashboard Overview](screenshots/WhatsApp%20Image%202025-11-22%20at%2012.49.48_846330e5.jpg)
+
+### 👤 User Profile View
+
+This screenshot displays the configuration or input form for a specific feature.
+
+![Settings Screen](screenshots/WhatsApp%20Image%202025-11-22%20at%2012.50.12_0085a0fd.jpg)
