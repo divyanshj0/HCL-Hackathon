@@ -178,3 +178,8 @@ fetch(`${process.env.REACT_APP_API_URL}/api/user/profile`, {
 ### 🏠 Application Homepage
 
 ![Homepage View](screenshots/WhatsApp%20Image%202025-11-22%20at%2012.42.23_27b6aaf1.jpg)
+
+### 👤 User Profile View
+
+This screenshot shows the initial profile screen after a successful login.
+![User Profile Screenshot](screenshots/WhatsApp%20Image%202025-11-22%20at%2012.41.59_6423c3c9.jpg)
